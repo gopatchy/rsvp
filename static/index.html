@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>document.documentElement.className = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'wa-dark' : 'wa-light';</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tickets App</title>
@@ -15,11 +16,18 @@
         }
     </style>
 </head>
-<body>
+<body style="opacity: 0">
     <wa-card>
         <h1 slot="header">Hello World</h1>
         <p>Welcome to the Tickets App!</p>
         <wa-button variant="brand">Get Started</wa-button>
     </wa-card>
+    <script type="module">
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+            document.documentElement.className = e.matches ? 'wa-dark' : 'wa-light';
+        });
+        await customElements.whenDefined('wa-card');
+        document.body.style.opacity = 1;
+    </script>
 </body>
 </html>
