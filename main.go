@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"html/template"
 	"log"
@@ -51,7 +50,6 @@ func init() {
 func main() {
 	http.HandleFunc("/", handleStatic)
 	http.HandleFunc("/auth/google/callback", handleGoogleCallback)
-	http.HandleFunc("/auth/logout", handleLogout)
 
 	log.Println("server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -65,11 +63,6 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimPrefix(path, "/")
 
-	if name == "index.html" && getProfile(r) != nil {
-		http.Redirect(w, r, "/home.html", http.StatusSeeOther)
-		return
-	}
-
 	if strings.HasSuffix(name, ".html") {
 		t := templates.Lookup(name)
 		if t == nil {
@@ -77,17 +70,16 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
-		t.Execute(w, templateData(r))
+		t.Execute(w, templateData())
 		return
 	}
 
 	http.ServeFile(w, r, filepath.Join("static", name))
 }
 
-func templateData(r *http.Request) map[string]any {
+func templateData() map[string]any {
 	return map[string]any{
-		"env":     envMap(),
-		"profile": getProfile(r),
+		"env": envMap(),
 	}
 }
 
@@ -99,43 +91,6 @@ func envMap() map[string]string {
 		}
 	}
 	return m
-}
-
-func getProfile(r *http.Request) map[string]any {
-	cookie, err := r.Cookie("profile")
-	if err != nil {
-		return nil
-	}
-	data, err := base64.RawURLEncoding.DecodeString(cookie.Value)
-	if err != nil {
-		return nil
-	}
-	var profile map[string]any
-	if json.Unmarshal(data, &profile) != nil {
-		return nil
-	}
-	return profile
-}
-
-func setProfile(w http.ResponseWriter, profile map[string]any) {
-	data, _ := json.Marshal(profile)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "profile",
-		Value:    base64.RawURLEncoding.EncodeToString(data),
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func handleLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:   "profile",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +118,6 @@ func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		"picture": payload.Claims["picture"],
 	}
 
-	setProfile(w, profile)
-	http.Redirect(w, r, "/home.html", http.StatusSeeOther)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(profile)
 }
