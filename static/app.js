@@ -85,9 +85,9 @@ export async function auth() {
         google.accounts.id.renderButton(signin, {
             type: 'standard',
             size: 'large',
-            theme: isDark ? 'filled_black' : 'outline',
+            theme: isDark ? 'outline' : 'filled_black',
             text: 'sign_in_with',
-            shape: 'rectangular',
+            shape: 'pill',
             logo_alignment: 'left'
         });
     });
