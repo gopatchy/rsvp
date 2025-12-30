@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -51,7 +52,20 @@ func init() {
 		)
 	`)
 	if err != nil {
-		log.Fatal("[ERROR] failed to create table: ", err)
+		log.Fatal("[ERROR] failed to create rsvps table: ", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS rsvp_payments (
+			stripe_session_id TEXT PRIMARY KEY,
+			event_id TEXT NOT NULL,
+			google_username TEXT NOT NULL,
+			amount DECIMAL(10,2) NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT NOW()
+		)
+	`)
+	if err != nil {
+		log.Fatal("[ERROR] failed to create rsvp_payments table: ", err)
 	}
 }
 
@@ -59,10 +73,12 @@ func main() {
 	stripe.Key = os.Getenv("STRIPE_SECRET_KEY")
 
 	http.HandleFunc("/", handleStatic)
-	http.HandleFunc("/auth/google/callback", handleGoogleCallback)
-	http.HandleFunc("/api/rsvp/", handleRSVP)
-	http.HandleFunc("/api/donate/", handleDonate)
-	http.HandleFunc("/api/stripe/webhook", handleStripeWebhook)
+	http.HandleFunc("POST /auth/google/callback", handleGoogleCallback)
+	http.HandleFunc("GET /api/rsvp/{eventID}", handleRSVPGet)
+	http.HandleFunc("POST /api/rsvp/{eventID}", handleRSVPPost)
+	http.HandleFunc("POST /api/donate/{eventID}", handleDonate)
+	http.HandleFunc("GET /api/donate/success/{eventID}", handleDonateSuccess)
+	http.HandleFunc("POST /api/stripe/webhook", handleStripeWebhook)
 
 	log.Println("server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -120,11 +136,6 @@ func envMap() map[string]string {
 }
 
 func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	credential := r.FormValue("credential")
 	if credential == "" {
 		http.Error(w, "missing credential", http.StatusBadRequest)
@@ -158,7 +169,8 @@ func signEmail(email string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(email)) + "." + sig
 }
 
-func verifyToken(token string) (string, bool) {
+func authorize(r *http.Request) (string, bool) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	parts := strings.SplitN(token, ".", 2)
 	if len(parts) != 2 {
 		return "", false
@@ -174,75 +186,60 @@ func verifyToken(token string) (string, bool) {
 	return email, true
 }
 
-func handleRSVP(w http.ResponseWriter, r *http.Request) {
-	eventID := strings.TrimPrefix(r.URL.Path, "/api/rsvp/")
-	if eventID == "" {
-		http.Error(w, "missing event id", http.StatusBadRequest)
-		return
-	}
-
-	token := r.Header.Get("Authorization")
-	email, ok := verifyToken(strings.TrimPrefix(token, "Bearer "))
+func handleRSVPGet(w http.ResponseWriter, r *http.Request) {
+	eventID := r.PathValue("eventID")
+	email, ok := authorize(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	switch r.Method {
-	case http.MethodGet:
-		var numPeople int
-		var donation float64
-		err := db.QueryRow("SELECT num_people, donation FROM rsvps WHERE event_id = $1 AND google_username = $2", eventID, email).Scan(&numPeople, &donation)
-		if err == sql.ErrNoRows {
-			numPeople = 0
-			donation = 0
-		} else if err != nil {
-			log.Println("[ERROR] failed to query rsvp:", err)
-			http.Error(w, "database error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"numPeople": numPeople, "donation": donation})
-
-	case http.MethodPost:
-		var req struct {
-			NumPeople int `json:"numPeople"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid json", http.StatusBadRequest)
-			return
-		}
-		_, err := db.Exec(`
-			INSERT INTO rsvps (event_id, google_username, num_people) VALUES ($1, $2, $3)
-			ON CONFLICT (event_id, google_username) DO UPDATE SET num_people = $3
-		`, eventID, email, req.NumPeople)
-		if err != nil {
-			log.Println("[ERROR] failed to upsert rsvp:", err)
-			http.Error(w, "database error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]int{"numPeople": req.NumPeople})
-
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	var numPeople int
+	var donation float64
+	err := db.QueryRow("SELECT num_people, donation FROM rsvps WHERE event_id = $1 AND google_username = $2", eventID, email).Scan(&numPeople, &donation)
+	if err == sql.ErrNoRows {
+		numPeople = 0
+		donation = 0
+	} else if err != nil {
+		log.Println("[ERROR] failed to query rsvp:", err)
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"numPeople": numPeople, "donation": donation})
+}
+
+func handleRSVPPost(w http.ResponseWriter, r *http.Request) {
+	eventID := r.PathValue("eventID")
+	email, ok := authorize(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		NumPeople int `json:"numPeople"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	_, err := db.Exec(`
+		INSERT INTO rsvps (event_id, google_username, num_people) VALUES ($1, $2, $3)
+		ON CONFLICT (event_id, google_username) DO UPDATE SET num_people = $3
+	`, eventID, email, req.NumPeople)
+	if err != nil {
+		log.Println("[ERROR] failed to upsert rsvp:", err)
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"numPeople": req.NumPeople})
 }
 
 func handleDonate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	eventID := strings.TrimPrefix(r.URL.Path, "/api/donate/")
-	if eventID == "" {
-		http.Error(w, "missing event id", http.StatusBadRequest)
-		return
-	}
-
-	token := r.Header.Get("Authorization")
-	email, ok := verifyToken(strings.TrimPrefix(token, "Bearer "))
+	eventID := r.PathValue("eventID")
+	email, ok := authorize(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -261,6 +258,7 @@ func handleDonate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	baseURL := os.Getenv("BASE_URL")
 	params := &stripe.CheckoutSessionParams{
 		Mode: stripe.String(string(stripe.CheckoutSessionModePayment)),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
@@ -275,8 +273,8 @@ func handleDonate(w http.ResponseWriter, r *http.Request) {
 				Quantity: stripe.Int64(1),
 			},
 		},
-		SuccessURL: stripe.String(os.Getenv("BASE_URL") + "/" + eventID + "?donated=1"),
-		CancelURL:  stripe.String(os.Getenv("BASE_URL") + "/" + eventID),
+		SuccessURL: stripe.String(fmt.Sprintf("%s/api/donate/success/%s?session_id={CHECKOUT_SESSION_ID}", baseURL, eventID)),
+		CancelURL:  stripe.String(fmt.Sprintf("%s/%s", baseURL, eventID)),
 		Metadata: map[string]string{
 			"event_id": eventID,
 			"email":    email,
@@ -292,6 +290,79 @@ func handleDonate(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"url": s.URL})
+}
+
+func processPayment(sess *stripe.CheckoutSession) error {
+	if sess.PaymentStatus != stripe.CheckoutSessionPaymentStatusPaid {
+		return nil
+	}
+
+	eventID := sess.Metadata["event_id"]
+	email := sess.Metadata["email"]
+	amount := float64(sess.AmountTotal) / 100
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var exists bool
+	err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM rsvp_payments WHERE stripe_session_id = $1)", sess.ID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO rsvp_payments (stripe_session_id, event_id, google_username, amount)
+		VALUES ($1, $2, $3, $4)
+	`, sess.ID, eventID, email, amount)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO rsvps (event_id, google_username, num_people, donation)
+		VALUES ($1, $2, 0, (SELECT COALESCE(SUM(amount), 0) FROM rsvp_payments WHERE event_id = $1 AND google_username = $2))
+		ON CONFLICT (event_id, google_username) DO UPDATE SET
+		donation = (SELECT COALESCE(SUM(amount), 0) FROM rsvp_payments WHERE event_id = $1 AND google_username = $2)
+	`, eventID, email)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	log.Printf("recorded donation of $%.2f from %s for %s", amount, email, eventID)
+	return nil
+}
+
+func handleDonateSuccess(w http.ResponseWriter, r *http.Request) {
+	eventID := r.PathValue("eventID")
+
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		http.Redirect(w, r, fmt.Sprintf("/%s", eventID), http.StatusSeeOther)
+		return
+	}
+
+	sess, err := session.Get(sessionID, nil)
+	if err != nil {
+		log.Println("[ERROR] failed to get checkout session:", err)
+		http.Redirect(w, r, fmt.Sprintf("/%s", eventID), http.StatusSeeOther)
+		return
+	}
+
+	if err := processPayment(sess); err != nil {
+		log.Println("[ERROR] failed to process payment:", err)
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/%s?donated=1", eventID), http.StatusSeeOther)
 }
 
 func handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
@@ -316,18 +387,8 @@ func handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		eventID := sess.Metadata["event_id"]
-		email := sess.Metadata["email"]
-		amount := float64(sess.AmountTotal) / 100
-
-		_, err := db.Exec(`
-			UPDATE rsvps SET donation = donation + $3
-			WHERE event_id = $1 AND google_username = $2
-		`, eventID, email, amount)
-		if err != nil {
-			log.Println("[ERROR] failed to update donation:", err)
-		} else {
-			log.Printf("recorded donation of $%.2f from %s for %s", amount, email, eventID)
+		if err := processPayment(&sess); err != nil {
+			log.Println("[ERROR] failed to process payment:", err)
 		}
 	}
 
