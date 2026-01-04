@@ -409,7 +409,7 @@ func sendRSVPConfirmation(eventID, email string, numPeople int) {
 	params := &resend.SendEmailRequest{
 		From:    "HCA Events <events@hca.run>",
 		To:      []string{email},
-		Subject: fmt.Sprintf("RSVP Confirmed: %s", event.Name),
+		Subject: fmt.Sprintf("Thank you for RSVPing to %s", event.Name),
 		Html:    html,
 	}
 
