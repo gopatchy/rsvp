@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/lib/pq v1.10.9
+	github.com/resend/resend-go/v2 v2.28.0
 	github.com/stripe/stripe-go/v76 v76.25.0
 	google.golang.org/api v0.258.0
 )

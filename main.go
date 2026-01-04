@@ -18,11 +18,28 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
+	"github.com/resend/resend-go/v2"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/checkout/session"
 	"github.com/stripe/stripe-go/v76/webhook"
 	"google.golang.org/api/idtoken"
 )
+
+type eventInfo struct {
+	Name     string
+	Date     string
+	Location string
+	Address  string
+}
+
+var events = map[string]eventInfo{
+	"afac26": {
+		Name:     "Applause for a Cause",
+		Date:     "Saturday, February 7, 2026 at 6:30 PM",
+		Location: "Helios Gym",
+		Address:  "597 Central Avenue, Sunnyvale, CA 94086",
+	},
+}
 
 var (
 	templates *template.Template
@@ -241,6 +258,9 @@ func handleRSVPPost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "database error", http.StatusInternalServerError)
 			return
 		}
+		if *req.NumPeople > 0 {
+			go sendRSVPConfirmation(eventID, email, *req.NumPeople)
+		}
 	}
 
 	numPeople, donation, err := getRSVP(eventID, email)
@@ -350,6 +370,55 @@ func processPayment(sess *stripe.CheckoutSession) error {
 
 	log.Printf("recorded donation of $%.2f from %s for %s", amount, email, eventID)
 	return nil
+}
+
+func sendRSVPConfirmation(eventID, email string, numPeople int) {
+	event, ok := events[eventID]
+	if !ok {
+		log.Printf("[ERROR] unknown event %s for email confirmation", eventID)
+		return
+	}
+
+	resendKey := os.Getenv("RESEND_KEY")
+	if resendKey == "" {
+		log.Println("[ERROR] RESEND_KEY not set, skipping confirmation email")
+		return
+	}
+
+	client := resend.NewClient(resendKey)
+
+	word := "person"
+	if numPeople != 1 {
+		word = "people"
+	}
+
+	html := fmt.Sprintf(`
+<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2>Your RSVP is Confirmed!</h2>
+  <p>You're all set for <strong>%s</strong>.</p>
+  <table style="margin: 20px 0; border-collapse: collapse;">
+    <tr><td style="padding: 8px 0; color: #666;">Party Size</td><td style="padding: 8px 0 8px 20px;"><strong>%d %s</strong></td></tr>
+    <tr><td style="padding: 8px 0; color: #666;">Date</td><td style="padding: 8px 0 8px 20px;"><strong>%s</strong></td></tr>
+    <tr><td style="padding: 8px 0; color: #666;">Location</td><td style="padding: 8px 0 8px 20px;"><strong>%s</strong><br>%s</td></tr>
+  </table>
+  <p>See you there!</p>
+  <p style="color: #666; font-size: 14px; margin-top: 30px;">— HCA Events</p>
+</div>
+`, event.Name, numPeople, word, event.Date, event.Location, event.Address)
+
+	params := &resend.SendEmailRequest{
+		From:    "HCA Events <events@hca.run>",
+		To:      []string{email},
+		Subject: fmt.Sprintf("RSVP Confirmed: %s", event.Name),
+		Html:    html,
+	}
+
+	_, err := client.Emails.Send(params)
+	if err != nil {
+		log.Printf("[ERROR] failed to send confirmation email to %s: %v", email, err)
+		return
+	}
+	log.Printf("sent confirmation email to %s for %s", email, eventID)
 }
 
 func handleDonateSuccess(w http.ResponseWriter, r *http.Request) {
