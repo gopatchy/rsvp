@@ -34,14 +34,15 @@
             gap: 0.5rem;
         }
         .header .spacer { flex: 1; }
-        #logout-btn { cursor: pointer; }
+        wa-button::part(base), .event-card {
+            cursor: pointer;
+        }
         .event-card {
             display: flex;
             align-items: center;
             gap: 1rem;
             text-decoration: none;
             color: inherit;
-            cursor: pointer;
         }
         .event-card img {
             height: 80px;
