@@ -204,8 +204,10 @@
                 parts.push(`Thank you for your $${donatedAmount.toFixed(2)} donation!`);
             }
             if (parts.length) {
-                document.getElementById('thank-you').textContent = parts.join(' ');
-                document.getElementById('thank-you').style.display = 'block';
+                const el = document.getElementById('thank-you');
+                el.textContent = parts.join(' ');
+                el.style.display = 'block';
+                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
             }
         }
 
@@ -214,7 +216,6 @@
         const numPeopleParam = params.get('num_people');
         if (donatedParam || numPeopleParam) {
             showConfirmation(parseInt(numPeopleParam) || 0, donatedParam ? parseFloat(donatedParam) : null);
-            document.getElementById('thank-you').scrollIntoView({ behavior: 'smooth', block: 'center' });
             history.replaceState({}, '', location.pathname);
         }
 
