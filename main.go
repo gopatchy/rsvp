@@ -102,6 +102,8 @@ func main() {
 }
 
 func handleStatic(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache")
+
 	path := r.URL.Path
 	if path == "/" {
 		path = "/index.html"
