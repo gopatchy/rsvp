@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report - HCA RSVP</title>
+    <style>
+        body {
+            font-family: var(--wa-font-sans);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+        }
+        #main { width: 100%; max-width: 800px; }
+        h1 { margin-bottom: 1.5rem; }
+        .summary {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--wa-color-neutral-80);
+        }
+        th { font-weight: 600; }
+        .number { text-align: right; }
+        wa-card { margin-bottom: 1rem; }
+        wa-details::part(header) { font-weight: 600; }
+    </style>
+</head>
+<body style="opacity: 0">
+    <div id="main">
+        <h1>RSVP Report</h1>
+        <div id="events"></div>
+    </div>
+    <script type="module">
+        import '/app.js';
+
+        const res = await fetch('/api/report');
+        const data = await res.json();
+
+        const container = document.getElementById('events');
+
+        for (const event of data) {
+            const card = document.createElement('wa-card');
+
+            const header = document.createElement('h3');
+            header.style.margin = '0 0 0.5rem 0';
+            header.textContent = event.name;
+
+            const summary = document.createElement('div');
+            summary.className = 'summary';
+            summary.innerHTML = `
+                <div>Total RSVPs: <strong>${event.totalPeople}</strong></div>
+                <div>Total Donated: <strong>$${event.totalDonated.toFixed(2)}</strong></div>
+            `;
+
+            const details = document.createElement('wa-details');
+            details.summary = `${event.rsvps.length} ${event.rsvps.length === 1 ? 'party' : 'parties'}`;
+
+            const table = document.createElement('table');
+            table.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th class="number">People</th>
+                        <th class="number">Donated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${event.rsvps.map(r => `
+                        <tr>
+                            <td>${r.email}</td>
+                            <td class="number">${r.numPeople}</td>
+                            <td class="number">$${r.donation.toFixed(2)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            `;
+
+            details.appendChild(table);
+            card.appendChild(header);
+            card.appendChild(summary);
+            card.appendChild(details);
+            container.appendChild(card);
+        }
+
+        if (data.length === 0) {
+            container.innerHTML = '<p>No RSVPs yet.</p>';
+        }
+
+        await customElements.whenDefined('wa-card');
+        document.body.style.opacity = 1;
+    </script>
+</body>
+</html>

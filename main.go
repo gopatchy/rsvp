@@ -96,6 +96,7 @@ func main() {
 	http.HandleFunc("POST /api/rsvp/{eventID}", handleRSVPPost)
 	http.HandleFunc("GET /api/donate/success/{eventID}", handleDonateSuccess)
 	http.HandleFunc("POST /api/stripe/webhook", handleStripeWebhook)
+	http.HandleFunc("GET /api/report", handleReport)
 
 	log.Println("server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -481,4 +482,60 @@ func handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func handleReport(w http.ResponseWriter, r *http.Request) {
+	type rsvpRow struct {
+		EventID   string  `json:"eventId"`
+		Email     string  `json:"email"`
+		NumPeople int     `json:"numPeople"`
+		Donation  float64 `json:"donation"`
+	}
+
+	type eventSummary struct {
+		EventID      string    `json:"eventId"`
+		Name         string    `json:"name"`
+		TotalPeople  int       `json:"totalPeople"`
+		TotalDonated float64   `json:"totalDonated"`
+		RSVPs        []rsvpRow `json:"rsvps"`
+	}
+
+	rows, err := db.Query("SELECT event_id, google_username, num_people, donation FROM rsvps WHERE num_people > 0 ORDER BY event_id, google_username")
+	if err != nil {
+		log.Println("[ERROR] failed to query rsvps for report:", err)
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	eventMap := map[string]*eventSummary{}
+	for rows.Next() {
+		var r rsvpRow
+		if err := rows.Scan(&r.EventID, &r.Email, &r.NumPeople, &r.Donation); err != nil {
+			log.Println("[ERROR] failed to scan rsvp row:", err)
+			http.Error(w, "database error", http.StatusInternalServerError)
+			return
+		}
+
+		summary, ok := eventMap[r.EventID]
+		if !ok {
+			name := r.EventID
+			if e, ok := events[r.EventID]; ok {
+				name = e.Name
+			}
+			summary = &eventSummary{EventID: r.EventID, Name: name, RSVPs: []rsvpRow{}}
+			eventMap[r.EventID] = summary
+		}
+		summary.TotalPeople += r.NumPeople
+		summary.TotalDonated += r.Donation
+		summary.RSVPs = append(summary.RSVPs, r)
+	}
+
+	result := []eventSummary{}
+	for _, s := range eventMap {
+		result = append(result, *s)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
