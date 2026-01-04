@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	_ "github.com/lib/pq"
@@ -252,7 +253,7 @@ func handleRSVPPost(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{"numPeople": numPeople, "donation": donation}
 
 	if req.DonationCents > 0 {
-		stripeURL, err := createCheckoutSession(eventID, email, req.DonationCents)
+		stripeURL, err := createCheckoutSession(eventID, email, req.DonationCents, numPeople)
 		if err != nil {
 			log.Println("[ERROR] failed to create checkout session:", err)
 			http.Error(w, "failed to create checkout session", http.StatusInternalServerError)
@@ -265,7 +266,7 @@ func handleRSVPPost(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func createCheckoutSession(eventID, email string, amountCents int64) (string, error) {
+func createCheckoutSession(eventID, email string, amountCents int64, numPeople int) (string, error) {
 	baseURL := os.Getenv("BASE_URL")
 	params := &stripe.CheckoutSessionParams{
 		CustomerEmail: stripe.String(email),
@@ -288,8 +289,9 @@ func createCheckoutSession(eventID, email string, amountCents int64) (string, er
 		SuccessURL: stripe.String(fmt.Sprintf("%s/api/donate/success/%s?session_id={CHECKOUT_SESSION_ID}", baseURL, eventID)),
 		CancelURL:  stripe.String(fmt.Sprintf("%s/%s", baseURL, eventID)),
 		Metadata: map[string]string{
-			"event_id": eventID,
-			"email":    email,
+			"event_id":   eventID,
+			"email":      email,
+			"num_people": fmt.Sprintf("%d", numPeople),
 		},
 	}
 
@@ -371,7 +373,13 @@ func handleDonateSuccess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	amount := float64(sess.AmountTotal) / 100
-	http.Redirect(w, r, fmt.Sprintf("/%s?donated=%.2f", eventID, amount), http.StatusSeeOther)
+	redirectURL := fmt.Sprintf("/%s?donated=%.2f", eventID, amount)
+	if numPeopleStr := sess.Metadata["num_people"]; numPeopleStr != "" {
+		if numPeople, err := strconv.Atoi(numPeopleStr); err == nil && numPeople > 0 {
+			redirectURL += fmt.Sprintf("&num_people=%d", numPeople)
+		}
+	}
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 func handleStripeWebhook(w http.ResponseWriter, r *http.Request) {

@@ -141,12 +141,7 @@
             <span class="spacer"></span>
             <wa-button variant="neutral" size="small" id="logout-btn">Switch User</wa-button>
         </div>
-        <div id="thank-you" class="thank-you" style="display: none;">
-            Thank you for your donation!
-        </div>
-        <div id="rsvp-confirmed" class="thank-you" style="display: none;">
-            Your RSVP has been updated!
-        </div>
+        <div id="thank-you" class="thank-you" style="display: none;"></div>
         <wa-card>
             <div class="event-header">
                 <img src="/afac26-logo.png" alt="Applause for a Cause">
@@ -199,10 +194,26 @@
 
         const eventId = 'afac26';
 
-        const donatedAmount = new URLSearchParams(location.search).get('donated');
-        if (donatedAmount) {
-            document.getElementById('thank-you').textContent = `Thank you for your $${parseFloat(donatedAmount).toFixed(2)} donation!`;
-            document.getElementById('thank-you').style.display = 'block';
+        function showConfirmation(numPeople, donatedAmount) {
+            const parts = [];
+            if (numPeople > 0) {
+                const word = numPeople === 1 ? 'person' : 'people';
+                parts.push(`Your RSVP for ${numPeople} ${word} is confirmed.`);
+            }
+            if (donatedAmount) {
+                parts.push(`Thank you for your $${donatedAmount.toFixed(2)} donation!`);
+            }
+            if (parts.length) {
+                document.getElementById('thank-you').textContent = parts.join(' ');
+                document.getElementById('thank-you').style.display = 'block';
+            }
+        }
+
+        const params = new URLSearchParams(location.search);
+        const donatedParam = params.get('donated');
+        const numPeopleParam = params.get('num_people');
+        if (donatedParam || numPeopleParam) {
+            showConfirmation(parseInt(numPeopleParam) || 0, donatedParam ? parseFloat(donatedParam) : null);
             history.replaceState({}, '', location.pathname);
         }
 
@@ -291,9 +302,7 @@
                 location.href = data.url;
             } else {
                 updateUI(data);
-                const word = data.numPeople === 1 ? 'person' : 'people';
-                document.getElementById('rsvp-confirmed').textContent = `Your RSVP has been updated to ${data.numPeople} ${word}.`;
-                document.getElementById('rsvp-confirmed').style.display = 'block';
+                showConfirmation(data.numPeople, null);
             }
         });
 
