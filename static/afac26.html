@@ -214,6 +214,7 @@
         const numPeopleParam = params.get('num_people');
         if (donatedParam || numPeopleParam) {
             showConfirmation(parseInt(numPeopleParam) || 0, donatedParam ? parseFloat(donatedParam) : null);
+            document.getElementById('thank-you').scrollIntoView({ behavior: 'smooth', block: 'center' });
             history.replaceState({}, '', location.pathname);
         }
 
