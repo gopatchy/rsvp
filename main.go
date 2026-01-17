@@ -113,6 +113,7 @@ func main() {
 	http.HandleFunc("POST /auth/google/callback", handleGoogleCallback)
 	http.HandleFunc("GET /api/rsvp/{eventID}", handleRSVPGet)
 	http.HandleFunc("POST /api/rsvp/{eventID}", handleRSVPPost)
+	http.HandleFunc("POST /api/donate/{eventID}", handleDonate)
 	http.HandleFunc("GET /api/donate/success/{eventID}", handleDonateSuccess)
 	http.HandleFunc("POST /api/stripe/webhook", handleStripeWebhook)
 	http.HandleFunc("GET /api/report", handleReport)
@@ -322,14 +323,37 @@ func handleRSVPPost(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+func handleDonate(w http.ResponseWriter, r *http.Request) {
+	eventID := r.PathValue("eventID")
+
+	var req struct {
+		DonationCents int64 `json:"donationCents"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	if req.DonationCents <= 0 {
+		http.Error(w, "donation amount required", http.StatusBadRequest)
+		return
+	}
+
+	stripeURL, err := createCheckoutSession(eventID, "", req.DonationCents, 0)
+	if err != nil {
+		log.Println("[ERROR] failed to create checkout session:", err)
+		http.Error(w, "failed to create checkout session", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"url": stripeURL})
+}
+
 func createCheckoutSession(eventID, email string, amountCents int64, numPeople int) (string, error) {
 	baseURL := os.Getenv("BASE_URL")
 	params := &stripe.CheckoutSessionParams{
-		CustomerEmail: stripe.String(email),
-		Mode:          stripe.String(string(stripe.CheckoutSessionModePayment)),
-		PaymentIntentData: &stripe.CheckoutSessionPaymentIntentDataParams{
-			ReceiptEmail: stripe.String(email),
-		},
+		Mode: stripe.String(string(stripe.CheckoutSessionModePayment)),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
@@ -346,9 +370,15 @@ func createCheckoutSession(eventID, email string, amountCents int64, numPeople i
 		CancelURL:  stripe.String(fmt.Sprintf("%s/%s", baseURL, eventID)),
 		Metadata: map[string]string{
 			"event_id":   eventID,
-			"email":      email,
 			"num_people": fmt.Sprintf("%d", numPeople),
 		},
+	}
+	if email != "" {
+		params.CustomerEmail = stripe.String(email)
+		params.PaymentIntentData = &stripe.CheckoutSessionPaymentIntentDataParams{
+			ReceiptEmail: stripe.String(email),
+		}
+		params.Metadata["email"] = email
 	}
 
 	s, err := session.New(params)
@@ -365,6 +395,9 @@ func processPayment(sess *stripe.CheckoutSession) error {
 
 	eventID := sess.Metadata["event_id"]
 	email := sess.Metadata["email"]
+	if email == "" && sess.CustomerDetails != nil {
+		email = sess.CustomerDetails.Email
+	}
 	amount := float64(sess.AmountTotal) / 100
 
 	tx, err := db.Begin()

@@ -117,9 +117,6 @@
         <wa-card>
             <div class="event-header">
                 <img src="/afac26-logo.png" alt="Applause for a Cause">
-                <p>Saturday, February 7, 2026 · 6:30 PM</p>
-                <p>Helios Gym</p>
-                <p>597 Central Avenue, Sunnyvale, CA 94086</p>
             </div>
             <div class="info-box">
                 <p style="margin: 0;">All donations go to <a href="https://svcommunityservices.org/" target="_blank">Sunnyvale Community Services</a>. Thank you for your generosity!</p>
@@ -127,10 +124,10 @@
             <div class="donation-section">
                 <div style="font-weight: bold; margin-bottom: 1rem;">Select a donation amount:</div>
                 <div class="button-group donation-group" id="donation-group">
-                    <wa-button variant="neutral" class="selected" data-value="25">$25</wa-button>
+                    <wa-button variant="neutral" class="selected" data-value="10">$10</wa-button>
+                    <wa-button variant="neutral" data-value="25">$25</wa-button>
                     <wa-button variant="neutral" data-value="50">$50</wa-button>
                     <wa-button variant="neutral" data-value="custom"><span>Other</span><wa-input type="number" size="small" id="custom-amount" min="1" value="100"><span slot="start">$</span></wa-input></wa-button>
-                    <wa-button variant="neutral" data-value="100">$100</wa-button>
                 </div>
                 <div style="text-align: center; margin-top: 1.5rem;">
                     <wa-button variant="brand" id="donate-btn">Donate</wa-button>
@@ -152,7 +149,7 @@
             history.replaceState({}, '', location.pathname);
         }
 
-        let selectedDonation = 25;
+        let selectedDonation = 10;
 
         function setupButtonGroup(groupId, onChange) {
             const group = document.getElementById(groupId);
