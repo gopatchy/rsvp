@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/lib/pq v1.10.9
 	github.com/resend/resend-go/v2 v2.28.0
-	github.com/stripe/stripe-go/v76 v76.25.0
+	github.com/stripe/stripe-go/v84 v84.2.0
 	google.golang.org/api v0.260.0
 )
 

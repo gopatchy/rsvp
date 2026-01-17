@@ -19,9 +19,9 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/resend/resend-go/v2"
-	"github.com/stripe/stripe-go/v76"
-	"github.com/stripe/stripe-go/v76/checkout/session"
-	"github.com/stripe/stripe-go/v76/webhook"
+	"github.com/stripe/stripe-go/v84"
+	"github.com/stripe/stripe-go/v84/checkout/session"
+	"github.com/stripe/stripe-go/v84/webhook"
 	"google.golang.org/api/idtoken"
 )
 
