@@ -310,7 +310,7 @@ func handleRSVPPost(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{"numPeople": numPeople, "donation": donation}
 
 	if req.DonationCents > 0 {
-		stripeURL, err := createCheckoutSession(eventID, email, req.DonationCents, numPeople)
+		stripeURL, err := createCheckoutSession(getBaseURL(r), eventID, email, req.DonationCents, numPeople)
 		if err != nil {
 			log.Println("[ERROR] failed to create checkout session:", err)
 			http.Error(w, "failed to create checkout session", http.StatusInternalServerError)
@@ -339,7 +339,7 @@ func handleDonate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stripeURL, err := createCheckoutSession(eventID, "", req.DonationCents, 0)
+	stripeURL, err := createCheckoutSession(getBaseURL(r), eventID, "", req.DonationCents, 0)
 	if err != nil {
 		log.Println("[ERROR] failed to create checkout session:", err)
 		http.Error(w, "failed to create checkout session", http.StatusInternalServerError)
@@ -350,8 +350,11 @@ func handleDonate(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"url": stripeURL})
 }
 
-func createCheckoutSession(eventID, email string, amountCents int64, numPeople int) (string, error) {
-	baseURL := os.Getenv("BASE_URL")
+func getBaseURL(r *http.Request) string {
+	return "https://" + r.Host
+}
+
+func createCheckoutSession(baseURL, eventID, email string, amountCents int64, numPeople int) (string, error) {
 	params := &stripe.CheckoutSessionParams{
 		Mode: stripe.String(string(stripe.CheckoutSessionModePayment)),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
