@@ -151,14 +151,16 @@
 
         const amountParam = params.get('a');
         let selectedDonation = 10;
-        if (amountParam) {
+        if (amountParam !== null) {
+            const group = document.getElementById('donation-group');
+            group.querySelectorAll('wa-button').forEach(b => b.classList.remove('selected'));
+            group.querySelector('wa-button[data-value="custom"]').classList.add('selected');
+            selectedDonation = 'custom';
             const amount = parseFloat(amountParam);
             if (amount > 0) {
                 document.getElementById('custom-amount').value = amount % 1 === 0 ? amount : amount.toFixed(2);
-                const group = document.getElementById('donation-group');
-                group.querySelectorAll('wa-button').forEach(b => b.classList.remove('selected'));
-                group.querySelector('wa-button[data-value="custom"]').classList.add('selected');
-                selectedDonation = 'custom';
+            } else {
+                document.getElementById('custom-amount').value = '';
             }
         }
 
@@ -195,7 +197,7 @@
             }
 
             if (donationCents <= 0) {
-                alert('Please select a donation amount');
+                alert(selectedDonation === 'custom' ? 'Please enter a donation amount' : 'Please select a donation amount');
                 return;
             }
 
