@@ -562,14 +562,16 @@ func handleReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type eventSummary struct {
-		EventID      string    `json:"eventId"`
-		Name         string    `json:"name"`
-		TotalPeople  int       `json:"totalPeople"`
-		TotalDonated float64   `json:"totalDonated"`
-		RSVPs        []rsvpRow `json:"rsvps"`
+		EventID           string    `json:"eventId"`
+		Name              string    `json:"name"`
+		TotalPeople       int       `json:"totalPeople"`
+		TotalRsvpDonated  float64   `json:"totalRsvpDonated"`
+		TotalOtherDonated float64   `json:"totalOtherDonated"`
+		TotalDonated      float64   `json:"totalDonated"`
+		RSVPs             []rsvpRow `json:"rsvps"`
 	}
 
-	rows, err := db.Query("SELECT event_id, google_username, num_people, donation FROM rsvps WHERE num_people > 0 ORDER BY event_id, google_username")
+	rows, err := db.Query("SELECT event_id, google_username, num_people, donation FROM rsvps ORDER BY event_id, google_username")
 	if err != nil {
 		log.Println("[ERROR] failed to query rsvps for report:", err)
 		http.Error(w, "database error", http.StatusInternalServerError)
@@ -595,9 +597,15 @@ func handleReport(w http.ResponseWriter, r *http.Request) {
 			summary = &eventSummary{EventID: r.EventID, Name: name, RSVPs: []rsvpRow{}}
 			eventMap[r.EventID] = summary
 		}
-		summary.TotalPeople += r.NumPeople
+
+		if r.NumPeople > 0 {
+			summary.TotalPeople += r.NumPeople
+			summary.TotalRsvpDonated += r.Donation
+			summary.RSVPs = append(summary.RSVPs, r)
+		} else if r.Donation > 0 {
+			summary.TotalOtherDonated += r.Donation
+		}
 		summary.TotalDonated += r.Donation
-		summary.RSVPs = append(summary.RSVPs, r)
 	}
 
 	result := []eventSummary{}

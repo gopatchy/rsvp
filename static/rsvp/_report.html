@@ -60,6 +60,8 @@
             summary.className = 'summary';
             summary.innerHTML = `
                 <div>Total RSVPs: <strong>${event.totalPeople}</strong></div>
+                <div>RSVP Donations: <strong>$${event.totalRsvpDonated.toFixed(2)}</strong></div>
+                <div>Other Donations: <strong>$${event.totalOtherDonated.toFixed(2)}</strong></div>
                 <div>Total Donated: <strong>$${event.totalDonated.toFixed(2)}</strong></div>
             `;
 
